@@ -39,6 +39,8 @@ LAUNCHER_CONTENT=$(cat <<'EOF'
 # --- 配置 (仅用于回退模式) ---
 FALLBACK_SEARCH_DIR="$HOME/Frank"
 FALLBACK_EXECUTABLE_NAME="pycharm.sh"
+# 保存 PyCharm 路径的配置文件
+PYCHARM_CONFIG_FILE="$HOME/.pycharm_path"
 
 # --- 启动函数 ---
 run_in_background() {
@@ -62,32 +64,55 @@ if command -v pycharm &> /dev/null; then
 fi
 
 # 回退：如果 'pycharm' 命令不存在或是我们自己的链接，则搜索 pycharm.sh
-echo "模式 2: 未找到官方 'pycharm' 命令，正在递归搜索 '${FALLBACK_SEARCH_DIR}' 目录及其所有子目录..."
+echo "模式 2: 未找到官方 'pycharm' 命令，正在检查已保存的 PyCharm 路径..."
 
-# 使用 -L 参数让 find 跟随符号链接，-type f 查找文件，-executable 查找可执行文件
-mapfile -t PCHARM_PATHS < <(find -L "${FALLBACK_SEARCH_DIR}" -name "${FALLBACK_EXECUTABLE_NAME}" -type f -executable 2>/dev/null)
-NUM_FOUND=${#PCHARM_PATHS[@]}
-LAUNCHER_TO_RUN=""
+# 首先检查是否有保存的路径
+if [[ -f "${PYCHARM_CONFIG_FILE}" ]]; then
+    SAVED_PATH=$(cat "${PYCHARM_CONFIG_FILE}")
+    if [[ -f "${SAVED_PATH}" && -x "${SAVED_PATH}" ]]; then
+        LAUNCHER_TO_RUN="${SAVED_PATH}"
+        echo "使用已保存的 PyCharm 路径:"
+        echo "  -> ${LAUNCHER_TO_RUN}"
+    else
+        echo "已保存的路径无效，正在重新搜索..."
+        rm -f "${PYCHARM_CONFIG_FILE}"
+    fi
+fi
 
-if [ ${NUM_FOUND} -eq 0 ]; then
-    echo "错误: 回退失败。在 '${FALLBACK_SEARCH_DIR}' 目录下也未找到任何名为 '${FALLBACK_EXECUTABLE_NAME}' 的可执行文件。"
-    exit 1
-elif [ ${NUM_FOUND} -eq 1 ]; then
-    LAUNCHER_TO_RUN="${PCHARM_PATHS[0]}"
-    echo "找到 1 个 PyCharm 启动器，将直接启动:"
-    echo "  -> ${LAUNCHER_TO_RUN}"
-else
-    echo "找到 ${NUM_FOUND} 个 PyCharm 启动器，请选择一个来启动:"
-    PS3="请输入数字选择 (按 Ctrl+C 退出): "
-    select OPTION in "${PCHARM_PATHS[@]}"; do
-        if [[ -n "${OPTION}" ]]; then
-            LAUNCHER_TO_RUN="${OPTION}"
-            echo "你选择了: ${LAUNCHER_TO_RUN}"
-            break
-        else
-            echo "无效的选择，请重新输入。"
-        fi
-    done
+# 如果没有保存的路径或路径无效，则搜索
+if [[ -z "${LAUNCHER_TO_RUN}" ]]; then
+    echo "正在递归搜索 '${FALLBACK_SEARCH_DIR}' 目录及其所有子目录..."
+    
+    # 使用 -L 参数让 find 跟随符号链接，-type f 查找文件，-executable 查找可执行文件
+    mapfile -t PCHARM_PATHS < <(find -L "${FALLBACK_SEARCH_DIR}" -name "${FALLBACK_EXECUTABLE_NAME}" -type f -executable 2>/dev/null)
+    NUM_FOUND=${#PCHARM_PATHS[@]}
+    
+    if [ ${NUM_FOUND} -eq 0 ]; then
+        echo "错误: 回退失败。在 '${FALLBACK_SEARCH_DIR}' 目录下也未找到任何名为 '${FALLBACK_EXECUTABLE_NAME}' 的可执行文件。"
+        exit 1
+    elif [ ${NUM_FOUND} -eq 1 ]; then
+        LAUNCHER_TO_RUN="${PCHARM_PATHS[0]}"
+        echo "找到 1 个 PyCharm 启动器，将直接启动:"
+        echo "  -> ${LAUNCHER_TO_RUN}"
+        # 保存路径到配置文件
+        echo "${LAUNCHER_TO_RUN}" > "${PYCHARM_CONFIG_FILE}"
+        echo "已保存 PyCharm 路径到配置文件，下次启动将直接使用此路径。"
+    else
+        echo "找到 ${NUM_FOUND} 个 PyCharm 启动器，请选择一个来启动:"
+        PS3="请输入数字选择 (按 Ctrl+C 退出): "
+        select OPTION in "${PCHARM_PATHS[@]}"; do
+            if [[ -n "${OPTION}" ]]; then
+                LAUNCHER_TO_RUN="${OPTION}"
+                echo "你选择了: ${LAUNCHER_TO_RUN}"
+                # 保存路径到配置文件
+                echo "${LAUNCHER_TO_RUN}" > "${PYCHARM_CONFIG_FILE}"
+                echo "已保存 PyCharm 路径到配置文件，下次启动将直接使用此路径。"
+                break
+            else
+                echo "无效的选择，请重新输入。"
+            fi
+        done
+    fi
 fi
 
 if [[ -n "${LAUNCHER_TO_RUN}" ]]; then
