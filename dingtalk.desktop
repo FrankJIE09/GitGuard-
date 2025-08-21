@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=钉钉
+Name[zh_CN]=钉钉
+Comment=阿里巴巴集团出品的企业通讯与协同办公平台
+Comment[zh_CN]=阿里巴巴集团出品的企业通讯与协同办公平台
+Exec=/opt/apps/com.alibabainc.dingtalk/files/Elevator.sh
+Icon=/opt/apps/com.alibabainc.dingtalk/files/logo.ico
+Terminal=false
+StartupNotify=false
+Categories=Network;InstantMessaging;Office;
+Keywords=钉钉;dingtalk;聊天;办公;协作;
+MimeType=x-scheme-handler/dingtalk;
+TryExec=/opt/apps/com.alibabainc.dingtalk/files/Elevator.sh
