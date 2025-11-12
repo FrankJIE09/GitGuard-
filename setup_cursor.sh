@@ -2,8 +2,9 @@
 
 # ==============================================================================
 # Cursor 启动命令设置脚本 (setup_cursor.sh)
-# 版本: v2.2 - 静默启动优化版
+# 版本: v2.3 - 智能回退启动版
 # 功能: 自动查找并为 Cursor AppImage 创建一个全局启动命令，启动时完全静默。
+#       如果正常启动失败，自动使用 --no-sandbox 参数重试。
 # 要求: 此脚本必须通过 sudo 运行。
 # ==============================================================================
 
@@ -68,21 +69,58 @@ APPIMAGE_ABSOLUTE_PATH=$(readlink -f "$FOUND_APPIMAGE")
 
 echo "AppImage 绝对路径为: $APPIMAGE_ABSOLUTE_PATH"
 
-# 【优化版】完全静默启动，确保终端没有任何输出信息
+# 【智能回退版】先尝试正常启动，失败则使用 --no-sandbox
 SCRIPT_CONTENT=$(cat <<EOF
 #!/bin/bash
 # 该文件由 setup_cursor.sh 脚本自动生成于 $(date)
-# 优化版：完全静默启动
+# 智能回退版：先尝试正常启动，失败则使用 --no-sandbox
 
 # Cursor AppImage 的绝对路径
 APPIMAGE_PATH="${APPIMAGE_ABSOLUTE_PATH}"
 
-# 完全静默启动：关闭所有输出，立即返回控制权给终端
-exec setsid "\$APPIMAGE_PATH" "\$@" </dev/null >/dev/null 2>&1 &
-disown
+# 临时文件用于检测启动状态
+TEMP_DIR=\$(mktemp -d)
+PID_FILE="\$TEMP_DIR/cursor.pid"
+LOG_FILE="\$TEMP_DIR/cursor.log"
 
-# 确保脚本立即退出，不等待任何进程
-exit 0
+# 清理函数
+cleanup() {
+    rm -rf "\$TEMP_DIR" 2>/dev/null
+}
+trap cleanup EXIT
+
+# 尝试正常启动
+try_start() {
+    local args="\$@"
+    # 启动应用并获取进程ID
+    setsid "\$APPIMAGE_PATH" \$args </dev/null >"\$LOG_FILE" 2>&1 &
+    local pid=\$!
+    echo \$pid > "\$PID_FILE"
+    disown
+    
+    # 等待一小段时间检查进程是否还在运行
+    sleep 0.5
+    
+    # 检查进程是否还在运行
+    if kill -0 \$pid 2>/dev/null; then
+        # 进程还在运行，启动成功
+        return 0
+    else
+        # 进程已退出，启动失败
+        return 1
+    fi
+}
+
+# 先尝试正常启动
+if try_start "\$@"; then
+    # 正常启动成功
+    exit 0
+else
+    # 正常启动失败，使用 --no-sandbox 参数重试
+    setsid "\$APPIMAGE_PATH" --no-sandbox "\$@" </dev/null >/dev/null 2>&1 &
+    disown
+    exit 0
+fi
 EOF
 )
 
@@ -98,10 +136,11 @@ chmod 777 "$APPIMAGE_ABSOLUTE_PATH"
 # ------------------------------------------------------------------------------
 # 4. 完成
 # ------------------------------------------------------------------------------
-echo -e "\n${GREEN}🎉 设置成功！'cursor' 命令已更新并优化为完全静默启动。${NC}"
+echo -e "\n${GREEN}🎉 设置成功！'cursor' 命令已更新为智能回退启动模式。${NC}"
 echo "--------------------------------------------------"
 echo "现在你可以使用:"
 echo "1. 打开一个【新的终端窗口】。"
 echo "2. 输入 ${YELLOW}cursor .${NC} 来在当前目录打开 Cursor。"
-echo "3. Cursor 会静默启动，终端不会显示任何运行信息。"
+echo "3. Cursor 会先尝试正常启动，如果失败会自动使用 --no-sandbox 参数。"
+echo "4. 启动过程完全静默，终端不会显示任何运行信息。"
 echo "--------------------------------------------------"
