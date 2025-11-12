@@ -27,3 +27,6 @@ __pycache__/
 .idea/
 .vscode/
 *.sublime-*
+
+# Miniconda 安装脚本
+Miniconda3-latest.sh
